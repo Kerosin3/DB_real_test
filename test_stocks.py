@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
-
-import sqlalchemy.exc
+from random import randrange
+from contextlib import contextmanager
 from sqlalchemy import (
     Table,
     MetaData,
@@ -13,10 +13,11 @@ from sqlalchemy import (
     DateTime,
     func,
     ForeignKey,
+
 )
 from sqlalchemy.orm import mapper
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, scoped_session, relationship, session
+from sqlalchemy.orm import sessionmaker, scoped_session, relationship, session, joinedload
 import csv, pathlib, os
 
 # users_table = Table(
@@ -26,26 +27,32 @@ import csv, pathlib, os
 #     Column('username',String(30),unique=True),
 #     Column('is_staff',Boolean,nullable=False,default=False), # oly 1 or 0
 # )s
+MAX_STOCKS = 0
+
+
 def get_companies_names_price_earnings():
     '''
     :return:
     '''
-    file = os.path.join(os.getcwd(), 's-and-p-500-companies-financials', 'data', 'constituents-financials.csv')
+    file = os.path.join(os.getcwd(), 's-and-p-500-companies-financials', 'constituents-financials_csv.csv')
     companies_ticker = []
     companies_name = []
     price_earnings = []
     mark_cap = []
+    c = 0
     print('file path:', file)
     with open(file, 'r') as csvfile:
         spamreader = csv.reader(csvfile, delimiter=',')
         next(spamreader)
         for row in spamreader:
             # print(', '.join(row))
+            c += 1
             companies_ticker.append(row[0])
             companies_name.append(row[1])
             price_earnings.append(row[3])
-            mark_cap.append(row[10])
-    return (companies_name,companies_ticker,price_earnings,mark_cap)
+            mark_cap.append(row[9])
+    globals()["MAX_STOCKS"] = c
+    return (companies_name, companies_ticker, price_earnings, mark_cap)
 
 
 engine = create_engine('sqlite:///stocks.db', echo=True)
@@ -57,34 +64,72 @@ Session = scoped_session(session_factory)
 
 class Stock(Base):
     __tablename__ = 'stock_info'
-    def __init__(self,
-                 stock_name:str,
-                 stock_ticker:str,
-                 stockable:bool = True,
-                 mark_cap:int = 0.0):
 
+    def __init__(self,
+                 stock_name: str,
+                 stock_ticker: str,
+                 stockable: bool = True,
+                 mark_cap: int = 0.0):
+        """
+        :param stock_name:
+        :param stock_ticker:
+        :param stockable:
+        :param mark_cap:
+        """
         self.stock_name = stock_name
         self.stock_ticker = stock_ticker
-        self.stockable = stockable #this year
-        self.mark_cap = mark_cap #this eyar
+        self.stockable = stockable  # this year
+        self.mark_cap = mark_cap  # this eyar
 
-    id = Column(Integer,primary_key=True) #id
-    stock_name = Column(String(40),nullable=False,default='',server_default='')
-    stock_ticker = Column(String(40),nullable=False,default='',server_default='')
-    stockable = Column(Boolean, nullable=False, default=True, server_default= '1')
-    mark_cap = Column(Integer, nullable=False, default=0, server_default='0')
+    id = Column(Integer, primary_key=True)  # id
+    stock_name = Column('Company name', String(40), nullable=False, default='', server_default='')
+    stock_ticker = Column('Ticker', String(40), nullable=False, default='', server_default='')
+    stockable = Column(Boolean, nullable=False, default=True, server_default='1')
+    mark_cap = Column('market capitalization', Integer, nullable=False, default=0, server_default='0')
     record_date = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=func.now())
 
     def __str__(self):
         return f"current stock info: (id = {self.id}," \
                f"name={self.stock_name!r}," \
                f"ticker={self.stock_ticker!r}," \
-               f"cap={self.mark_cap!r} )" \
-               f"if sotockable?={self.stockable!r} )"
-
+               f"cap={self.mark_cap!r} " \
+               f"if stockable?={self.stockable!r} )"
 
     def __repr__(self):
         return str(self)
+
+    financials = relationship("Financials", back_populates="stock0")
+
+
+class Financials(Base):
+    __tablename__ = 'Financials'
+
+    # def __init__(self, price_earning: 0, price_book: 0, year: int = 1900):
+    #     """
+    #     :param price_earning:
+    #     :param price_book:
+    #     """
+    #     self.price_earning = price_earning
+    #     self.price_book = price_book
+    #     self.year = year
+
+    id = Column(Integer, primary_key=True)
+    refer_stock_ticker = Column(String, ForeignKey(Stock.stock_ticker), nullable=False)
+    year = Column(Integer, nullable=False, unique=True, default='1900', server_default='1900')
+    price_earning = Column('Price to earnings', Integer, nullable=False, default='0', server_default='0')
+    price_book = Column('Price to book', Integer, nullable=False, default='0', server_default='0')
+
+    def __str__(self):
+        return f"stock\'s financials of year:" \
+               f"{self.year} are " \
+               f"p/e = {self.price_earning}," \
+               f"p/b = {self.price_book}"
+
+    def __repr__(self):
+        return str(self)
+
+    stock0 = relationship(Stock, back_populates="financials")
+
 
 def write_stock(stock):
     session = Session()
@@ -96,34 +141,104 @@ def write_stock(stock):
         stockable=True,
         mark_cap=stock[3],
     )
-    print('printing...',stock_filling)
+    print('printing...', stock_filling)
     session.add(stock_filling)
     session.commit()
     session.close()
 
-def take_one_stock(input,n):
-    print('length:',len(input))
+
+def take_one_stock(input):
     count = 0
-    for i in range(len(input)):
-        if count == n-1:
+    while True:
+        if count == MAX_STOCKS:
             return
         res_list = [stock[count] for stock in input]
         count += 1
-        yield res_list # yeield
+        yield res_list  # yeield
+
 
 def take_one_stock_ver0(input):
     res_list = [stock[0] for stock in input]
-    return  res_list
+    return res_list
+
+
+def fill_one_financial(ticker: str, year: int = 1900):
+    with get_session() as session:
+        stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one() #asking
+        print('current financials:', stock0)
+        pe = randrange(1, 100)
+        pb = randrange(1, 100)
+        fin = Financials(price_book=pb, price_earning=pe, year=year, refer_stock_ticker=stock0.stock_ticker)
+        session.add(fin)
+    print('financials after', stock0.financials)
+
+
+class NoSuchStock(Exception):
+    """ no such stock"""
+    pass
+class ParameterIfFIlled(Exception):
+    """ this parameter has been already filled"""
+    pass
+class ErrorDuringSessioning(Exception):
+    """ something bad happened"""
+    pass
+
+@contextmanager
+def get_session():
+    session0 = Session()
+    try:
+        yield session0
+    except sqlite3.IntegrityError:
+        print('aaaaaaaaaaaaaaaa')
+    except :  # anything else
+        session0.rollback()
+        raise ErrorDuringSessioning('there is something bad happened')
+    else:
+        session0.commit()
+
+
+def get_all_financials(ticker: str):
+    with get_session() as session:
+        try:
+            stock0: Stock = (
+                session
+                    .query(Stock)
+                    .filter_by(stock_ticker=ticker)
+                    .options(joinedload(Stock.financials))
+                    .one()
+            )
+        except:  # Error666
+            print('There is no such stock')
+        else:
+            print('stock data = ',stock0)
+            print('stock\'s financial:',stock0.financials)
+
+
+def fill_one_financialv2(ticker: str, year: int = 1900):
+    stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one_or_none()
+    print('current financials:', stock0)
+    pe = randrange(1, 100)
+    pb = randrange(1, 100)
+    try:
+        fin = Financials(price_book=pb, price_earning=pe, year=year, refer_stock_ticker=stock0.stock_ticker)
+    except sqlite3.IntegrityError:
+        session.rollback()
+        year += 1
+        raise
+    else:
+        session.add(fin)
+        session.commit()
+    print('financials after', stock0.financials)
+    session.close()
+
 
 if __name__ == '__main__':
-
-    Base.metadata.create_all()
+    # Base.metadata.create_all()
     result = get_companies_names_price_earnings()
-    n=5
-    stocks = take_one_stock(result,n)
-    for i in range(n):
-        write_stock( stocks.__next__())
-        #write_stock(stock)
-    # a_stock = take_one_stock_ver0(result)
-    # write_stock(a_stock)
-
+    stocks = take_one_stock(result)
+    # print(MAX_STOCKS)
+    # for i in range(15):
+    #     stock = stocks.__next__()
+    #     write_stock(stock)
+    #fill_one_financial('ADBE', year=2002)
+    get_all_financials('ADBE')
