@@ -75,7 +75,7 @@ class Post(Base):
 
 
 def get_companies():
-    file = os.path.join(os.getcwd(), 's-and-p-500-companies-financials', 'data', 'constituents-financials.csv')
+    file = os.path.join(os.getcwd(), '../s-and-p-500-companies-financials', 'data', 'constituents-financials.csv')
     companies_ticker = []
     companies_name = []
     print('file path:', file)

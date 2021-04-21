@@ -20,20 +20,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session, relationship, session, joinedload
 import csv, pathlib, os
 
-# users_table = Table(
-#     'users',
-#     metadata,
-#     Column('id',Integer,primary_key=True),
-#     Column('username',String(30),unique=True),
-#     Column('is_staff',Boolean,nullable=False,default=False), # oly 1 or 0
-# )s
 MAX_STOCKS = 0
 
 
 def get_companies_names_price_earnings():
-    '''
-    :return:
-    '''
     file = os.path.join(os.getcwd(), 's-and-p-500-companies-financials', 'constituents-financials_csv.csv')
     companies_ticker = []
     companies_name = []
@@ -104,15 +94,6 @@ class Stock(Base):
 class Financials(Base):
     __tablename__ = 'Financials'
 
-    # def __init__(self, price_earning: 0, price_book: 0, year: int = 1900):
-    #     """
-    #     :param price_earning:
-    #     :param price_book:
-    #     """
-    #     self.price_earning = price_earning
-    #     self.price_book = price_book
-    #     self.year = year
-
     id = Column(Integer, primary_key=True)
     refer_stock_ticker = Column(String, ForeignKey(Stock.stock_ticker), nullable=False)
     year = Column(Integer, nullable=False, unique=True, default='1900', server_default='1900')
@@ -164,7 +145,7 @@ def take_one_stock_ver0(input):
 
 def fill_one_financial(ticker: str, year: int = 1900):
     with get_session() as session:
-        stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one() #asking
+        stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one()  # asking
         print('current financials:', stock0)
         pe = randrange(1, 100)
         pb = randrange(1, 100)
@@ -176,21 +157,26 @@ def fill_one_financial(ticker: str, year: int = 1900):
 class NoSuchStock(Exception):
     """ no such stock"""
     pass
+
+
 class ParameterIfFIlled(Exception):
     """ this parameter has been already filled"""
     pass
+
+
 class ErrorDuringSessioning(Exception):
     """ something bad happened"""
     pass
 
+# creating a session manager
 @contextmanager
 def get_session():
     session0 = Session()
     try:
         yield session0
     except sqlite3.IntegrityError:
-        print('aaaaaaaaaaaaaaaa')
-    except :  # anything else
+        print('some error during enquiring to DB')
+    except:  # anything else
         session0.rollback()
         raise ErrorDuringSessioning('there is something bad happened')
     else:
@@ -210,10 +196,10 @@ def get_all_financials(ticker: str):
         except:  # Error666
             print('There is no such stock')
         else:
-            print('stock data = ',stock0)
-            print('stock\'s financial:',stock0.financials)
+            print('stock data = ', stock0)
+            print('stock\'s financial:', stock0.financials)
 
-
+#depricated
 def fill_one_financialv2(ticker: str, year: int = 1900):
     stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one_or_none()
     print('current financials:', stock0)
@@ -233,12 +219,14 @@ def fill_one_financialv2(ticker: str, year: int = 1900):
 
 
 if __name__ == '__main__':
-    # Base.metadata.create_all()
-    result = get_companies_names_price_earnings()
-    stocks = take_one_stock(result)
-    # print(MAX_STOCKS)
-    # for i in range(15):
-    #     stock = stocks.__next__()
-    #     write_stock(stock)
-    #fill_one_financial('ADBE', year=2002)
-    get_all_financials('ADBE')
+    create_db = 0 # if we starting from blank
+    if create_db:  # creating db
+        Base.metadata.create_all()
+        result = get_companies_names_price_earnings()
+        stocks = take_one_stock(result)
+        for i in range(15):  # filling 15 stocks
+            stock = stocks.__next__()
+            write_stock(stock)
+
+    fill_one_financial('ADBE', year=2000)  # filling financial for a specific year
+    #get_all_financials('ADBE')
