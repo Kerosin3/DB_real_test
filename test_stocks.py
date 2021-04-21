@@ -145,7 +145,9 @@ def take_one_stock_ver0(input):
 
 def fill_one_financial(ticker: str, year: int = 1900):
     with get_session() as session:
-        stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one()  # asking
+        stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one_or_none()  # asking
+        if stock0 is None:
+            raise NoSuchStock
         print('current financials:', stock0)
         pe = randrange(1, 100)
         pb = randrange(1, 100)
@@ -174,8 +176,8 @@ def get_session():
     session0 = Session()
     try:
         yield session0
-    except sqlite3.IntegrityError:
-        print('some error during enquiring to DB')
+    #except sqlite3.IntegrityError:
+        #print('some error during enquiring to DB')
     except:  # anything else
         session0.rollback()
         raise ErrorDuringSessioning('there is something bad happened')
@@ -228,5 +230,5 @@ if __name__ == '__main__':
             stock = stocks.__next__()
             write_stock(stock)
 
-    fill_one_financial('ADBE', year=2000)  # filling financial for a specific year
+    fill_one_financial('adasdad', year=2000)  # filling financial for a specific year
     #get_all_financials('ADBE')
