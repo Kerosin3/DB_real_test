@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import mapper
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session, relationship, session, joinedload
+from sqlalchemy.sql import exists
 import csv, pathlib, os
 
 MAX_STOCKS = 0
@@ -95,7 +96,7 @@ class Financials(Base):
     __tablename__ = 'Financials'
 
     id = Column(Integer, primary_key=True)
-    refer_stock_ticker = Column(String, ForeignKey(Stock.stock_ticker), nullable=False)
+    refer_stock_ticker = Column(String, ForeignKey(Stock.stock_ticker), unique=True, nullable=False)
     year = Column(Integer, nullable=False, unique=True, default='1900', server_default='1900')
     price_earning = Column('Price to earnings', Integer, nullable=False, default='0', server_default='0')
     price_book = Column('Price to book', Integer, nullable=False, default='0', server_default='0')
@@ -110,6 +111,16 @@ class Financials(Base):
         return str(self)
 
     stock0 = relationship(Stock, back_populates="financials")
+    @classmethod
+    def get_random_fin(self,stock0:Stock,year:int=1900):
+        pe = randrange(1, 100)
+        pb = randrange(1, 100)
+        fin = Financials(
+            price_book=pb,
+            price_earning=pe,
+            year=year,
+            refer_stock_ticker=stock0.stock_ticker)
+        return fin
 
 
 def write_stock(stock):
@@ -142,18 +153,38 @@ def take_one_stock_ver0(input):
     res_list = [stock[0] for stock in input]
     return res_list
 
-
-def fill_one_financial(ticker: str, year: int = 1900):
-    with get_session() as session:
-        stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one_or_none()  # asking
-        if stock0 is None:
-            raise NoSuchStock
-        print('current financials:', stock0)
-        pe = randrange(1, 100)
-        pb = randrange(1, 100)
-        fin = Financials(price_book=pb, price_earning=pe, year=year, refer_stock_ticker=stock0.stock_ticker)
-        session.add(fin)
-    print('financials after', stock0.financials)
+#depricated
+# def fill_one_financial(ticker: str, year: int = 1900):
+#     with get_session() as session:
+#         # stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one_or_none()  # asking
+#         # stock0: Stock = (
+#         #     session
+#         #         .query(Stock)
+#         #         .filter_by(stock_ticker=ticker)
+#         #         .options(joinedload(Stock.financials))
+#         #         .first()  #take first of return None if not exists
+#         #         .exists().where(Stock.financials.year == year).scalar() # check if year if filled for this stock
+#         #     )
+#         stock0: Stock = (
+#             session
+#                 .query(Stock)
+#                 .join(Financials)  # джоиним финаншл
+#                 .filter_by(stock_ticker=ticker)  # фильтруем по Сток
+#                 .filter(Financials.year == year)  # фильтруем по финаншл?
+#                 .options(joinedload(Stock.financials))
+#                 .first()  # take first of return None if not exists
+#         )
+#         # )
+#         print('there is stock0======', stock0)
+#         print('there is stock0 age ======', stock0.financials.year)
+#         if stock0 is None:
+#             raise NoSuchStock
+#         print('current financials:', stock0)
+#         pe = randrange(1, 100)
+#         pb = randrange(1, 100)
+#         fin = Financials(price_book=pb, price_earning=pe, year=year, refer_stock_ticker=stock0.stock_ticker)
+#         session.add(fin)
+#     print('financials after', stock0.financials)
 
 
 class NoSuchStock(Exception):
@@ -170,58 +201,83 @@ class ErrorDuringSessioning(Exception):
     """ something bad happened"""
     pass
 
+
 # creating a session manager
 @contextmanager
 def get_session():
     session0 = Session()
     try:
         yield session0
-    #except sqlite3.IntegrityError:
-        #print('some error during enquiring to DB')
     except:  # anything else
         session0.rollback()
-        raise ErrorDuringSessioning('there is something bad happened')
+        raise ErrorDuringSessioning('there is something bad happened,aborting session')
     else:
         session0.commit()
 
 
 def get_all_financials(ticker: str):
     with get_session() as session:
-        try:
+        stock0: Stock = (
+            session
+                .query(Stock)
+                .filter_by(stock_ticker=ticker)
+                .options(joinedload(Stock.financials))
+                .one_or_none()
+        )
+        if stock0 is None:
+            print('There is no such a stock')
+            raise NoSuchStock
+        else:
+            print('=========stock data = ', stock0, '=========')
+            print('========= stock\'s financial:', stock0.financials, '=============')
+
+
+def fill_one_financial(ticker: str, year: int,fill_random=False,incr_year=False):
+    with get_session() as session:
+        stock0 = (
+            session
+                .query(Stock)
+                .filter(Stock.stock_ticker == ticker)
+                .first()
+        )
+        session.close()
+        if stock0 is not None:  # there is such stock
             stock0: Stock = (
                 session
                     .query(Stock)
-                    .filter_by(stock_ticker=ticker)
+                    .join(Financials)
+                    .filter(
+                    Stock.stock_ticker == ticker,
+                    Financials.year == year,
+                )
                     .options(joinedload(Stock.financials))
-                    .one()
+                    .first()
             )
-        except:  # Error666
+            session.close()
+            if stock0 is None:  # filling for the year
+                #print('I am none')
+                if not incr_year:
+                    stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one()
+                    fin = Financials.get_random_fin(stock0,year=year) # random financials
+                    session.add(fin)
+                    session.commit()
+                # else:
+                #     stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one()
+                #     fin = Financials.get_random_fin(stock0, year=year+1)  # random financials
+                #     session.add(fin)
+                #     session.commit()
+            else:
+                print('this year has been already filled')
+                raise ParameterIfFIlled
+        else: #if stock is None
             print('There is no such stock')
-        else:
-            print('stock data = ', stock0)
-            print('stock\'s financial:', stock0.financials)
-
-#depricated
-def fill_one_financialv2(ticker: str, year: int = 1900):
-    stock0: Stock = session.query(Stock).filter_by(stock_ticker=ticker).one_or_none()
-    print('current financials:', stock0)
-    pe = randrange(1, 100)
-    pb = randrange(1, 100)
-    try:
-        fin = Financials(price_book=pb, price_earning=pe, year=year, refer_stock_ticker=stock0.stock_ticker)
-    except sqlite3.IntegrityError:
-        session.rollback()
-        year += 1
-        raise
-    else:
-        session.add(fin)
-        session.commit()
-    print('financials after', stock0.financials)
-    session.close()
+            raise NoSuchStock
+        print('==========Stock>>>>>>>>>>', stock0)
+        print('==========Stock\'s financials:', stock0.financials)
 
 
 if __name__ == '__main__':
-    create_db = 0 # if we starting from blank
+    create_db = 0  # if we starting from blank
     if create_db:  # creating db
         Base.metadata.create_all()
         result = get_companies_names_price_earnings()
@@ -230,5 +286,5 @@ if __name__ == '__main__':
             stock = stocks.__next__()
             write_stock(stock)
 
-    fill_one_financial('adasdad', year=2000)  # filling financial for a specific year
-    #get_all_financials('ADBE')
+    # get_all_financials('ADBE')
+    fill_one_financial('ADBE', 2005,incr_year=True)
